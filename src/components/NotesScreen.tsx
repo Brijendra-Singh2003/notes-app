@@ -1,10 +1,10 @@
-import Notes from "@/api/Notes";
+import Notes, { useNotesStore } from "@/api/Notes";
 import { ThemedText } from "@/components/themed-text";
 import { useTheme } from "@/hooks/use-theme";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -19,7 +19,6 @@ import {
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-type SectionedNotes = Awaited<ReturnType<typeof Notes.loadNotes>>;
 const AnimatedSectionList = Animated.createAnimatedComponent(
   SectionList,
 ) as unknown as typeof SectionList;
@@ -32,11 +31,12 @@ export default function NotesScreen(props: {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const [notes, setNotes] = useState<SectionedNotes>([]);
+  const notes = useNotesStore((state) => state.notes);
+  const refreshNotes = useNotesStore((state) => state.refresh);
 
   const refresh = useCallback(() => {
-    Notes.loadNotes(db).then(setNotes);
-  }, [db]);
+    void refreshNotes(db);
+  }, [db, refreshNotes]);
 
   useFocusEffect(refresh);
 

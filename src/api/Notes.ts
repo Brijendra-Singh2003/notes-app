@@ -1,4 +1,5 @@
 import { SQLiteDatabase } from "expo-sqlite";
+import { create } from "zustand";
 
 export interface NoteBase {
   id: number;
@@ -40,7 +41,7 @@ async function createNote(
 ): Promise<number> {
   const result = await db.runAsync(
     "INSERT INTO notes (title, content, createdAt) VALUES (?, ?, ?);",
-    title.trim() || content.trim(),
+    title.trim() || "Untitled",
     content,
     todayLabel(),
   );
@@ -79,6 +80,21 @@ function groupByDate(notes: NoteBase[]) {
   );
   return Object.entries(map).map(([title, data = []]) => ({ title, data }));
 }
+
+export type SectionedNotes = Awaited<ReturnType<typeof loadNotes>>;
+
+interface NotesStore {
+  notes: SectionedNotes;
+  refresh: (db: SQLiteDatabase) => Promise<void>;
+}
+
+export const useNotesStore = create<NotesStore>((set) => ({
+  notes: [],
+  refresh: async (db) => {
+    const notes = await loadNotes(db);
+    set({ notes });
+  },
+}));
 
 export default {
   loadNotes,

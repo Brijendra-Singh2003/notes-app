@@ -1,5 +1,5 @@
 // app/note.tsx  →  route "/note" (new)  or  "/note?id=12" (edit)
-import Notes from "@/api/Notes";
+import Notes, { useNotesStore } from "@/api/Notes";
 import { useTheme } from "@/hooks/use-theme";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
@@ -20,7 +19,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const AUTOSAVE_DELAY = 800; // ms of inactivity before saving
 
 type Draft = { title: string; content: string };
-type SaveStatus = "idle" | "saving" | "saved";
 
 export default function NoteEditor() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -29,10 +27,9 @@ export default function NoteEditor() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState("Untitled");
   const [content, setContent] = useState("");
   const [loaded, setLoaded] = useState(!id);
-  const [status, setStatus] = useState<SaveStatus>("idle");
 
   // Refs hold the "truth" so flush() never reads stale state
   const noteId = useRef<number | null>(id ? Number(id) : null);
@@ -77,16 +74,15 @@ export default function NoteEditor() {
         if (draft.title === saved.title && draft.content === saved.content) {
           return;
         }
-        // Don't create empty notes
-        if (
-          noteId.current == null &&
-          !draft.title.trim() &&
-          !draft.content.trim()
-        ) {
+        // Don't create blank new notes when exiting.
+        if (noteId.current == null && !draft.content.trim()) {
           return;
         }
 
-        setStatus("saving");
+        if (!id && !draft.content.trim() && noteId.current) {
+          Notes.deleteNote(db, noteId.current);
+        }
+
         if (noteId.current == null) {
           noteId.current = await Notes.createNote(
             db,
@@ -102,7 +98,7 @@ export default function NoteEditor() {
           );
         }
         lastSaved.current = draft;
-        setStatus("saved");
+        await useNotesStore.getState().refresh(db);
       })
       .catch((e) => console.error("Failed to save note", e));
 
@@ -131,18 +127,13 @@ export default function NoteEditor() {
     const sub = AppState.addEventListener("change", (state) => {
       if (state !== "active") flush();
     });
-    return () => sub.remove();
-  }, [flush]);
-
-  // Save on unmount (covers swipe-back and Android hardware back)
-  useEffect(() => {
     return () => {
       flush();
+      sub.remove();
     };
   }, [flush]);
 
   const goBack = async () => {
-    await flush();
     if (router.canGoBack()) router.back();
     else router.replace("/");
   };
@@ -178,14 +169,6 @@ export default function NoteEditor() {
             returnKeyType="next"
             style={[styles.titleInput, { color: textColor }]}
           />
-
-          <Text style={[styles.status, { color: textColor }]}>
-            {status === "saving"
-              ? "Saving…"
-              : status === "saved"
-                ? "Saved"
-                : ""}
-          </Text>
         </View>
 
         <TextInput
@@ -230,11 +213,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "600",
     paddingVertical: 8,
-  },
-  status: {
-    minWidth: 56,
-    textAlign: "right",
-    fontSize: 12,
   },
   contentInput: {
     flex: 1,
